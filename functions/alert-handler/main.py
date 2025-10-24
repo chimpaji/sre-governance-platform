@@ -14,6 +14,7 @@ def handle_alert(cloud_event):
     """
     Cloud Run Function (2nd gen) triggered by Pub/Sub to handle alerts from Cloud Monitoring.
     
+    Version: 2.0 - Enhanced logging and CI/CD integration
     In MVP: Logs alert details + simulates email notification
     Production: Would integrate with SendGrid/PagerDuty/ServiceNow APIs
     """
@@ -31,11 +32,13 @@ def handle_alert(cloud_event):
     policy_name = alert_payload.get('incident', {}).get('policy_name', 'unknown')
     
     # Log alert with proper Cloud Logging
-    logger.info(f"🚨 ALERT RECEIVED: {policy_name}")
+    logger.info("=" * 60)
+    logger.info(f"🚨 ALERT RECEIVED [v2.0]: {policy_name}")
     logger.info(f"📋 Incident ID: {incident_id}")
     logger.info(f"🔍 Condition: {condition_name}")
     logger.info(f"⚠️ State: {state} | Severity: {severity}")
     logger.info(f"📝 Summary: {summary}")
+    logger.info("=" * 60)
     
     # Simulate email notification
     logger.info("📧 MOCK EMAIL NOTIFICATION:")
