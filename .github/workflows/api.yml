@@ -1,0 +1,182 @@
+name: API CI/CD
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    paths:
+      - 'api/**'
+  pull_request:
+    branches:
+      - main
+      - master
+    paths:
+      - 'api/**'
+  workflow_dispatch:
+
+env:
+  GCP_REGION: 'us-central1'
+  SERVICE_NAME: 'sre-governance-api'
+  IMAGE_NAME: 'gcr.io/uber-clone-api-325213/sre-governance-api'
+
+jobs:
+  security-scan:
+    name: Security Scanning
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      # Dependency vulnerability scanning with pip-audit (open source)
+      - name: Install pip-audit
+        run: pip install pip-audit
+      
+      - name: Scan Python dependencies for vulnerabilities
+        working-directory: ./api
+        run: |
+          pip-audit -r requirements.txt --desc --format json --output pip-audit-report.json || true
+          pip-audit -r requirements.txt --desc
+        continue-on-error: true
+      
+      # SAST with Bandit (open source Python security linter)
+      - name: Run Bandit security scan
+        run: |
+          pip install bandit[toml]
+          bandit -r api/ -f json -o bandit-report.json || true
+          bandit -r api/ -ll
+        continue-on-error: true
+      
+      # Container image scanning with Trivy (open source)
+      - name: Build temp Docker image for scanning
+        working-directory: ./api
+        run: docker build -t ${{ env.IMAGE_NAME }}:scan .
+      
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.IMAGE_NAME }}:scan
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+      
+      - name: Upload Trivy results to GitHub Security
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+      
+      # Secrets scanning with Gitleaks (open source)
+      - name: Run Gitleaks secret scan
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Upload security scan artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: |
+            pip-audit-report.json
+            bandit-report.json
+            trivy-results.sarif
+
+  build-and-deploy:
+    name: Build and Deploy API
+    runs-on: ubuntu-latest
+    needs: security-scan
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
+    permissions:
+      contents: read
+      id-token: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+      
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+      
+      - name: Configure Docker for GCR
+        run: gcloud auth configure-docker
+      
+      - name: Build Docker image
+        working-directory: ./api
+        run: |
+          docker build \
+            --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
+            --build-arg VCS_REF=${{ github.sha }} \
+            -t ${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            -t ${{ env.IMAGE_NAME }}:latest \
+            .
+      
+      - name: Push Docker image to GCR
+        run: |
+          docker push ${{ env.IMAGE_NAME }}:${{ github.sha }}
+          docker push ${{ env.IMAGE_NAME }}:latest
+      
+      - name: Deploy to Cloud Run
+        run: |
+          gcloud run deploy ${{ env.SERVICE_NAME }} \
+            --image=${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --region=${{ env.GCP_REGION }} \
+            --platform=managed \
+            --allow-unauthenticated \
+            --min-instances=1 \
+            --max-instances=10 \
+            --memory=512Mi \
+            --cpu=1 \
+            --timeout=300 \
+            --set-env-vars="VERSION=${{ github.sha }}"
+      
+      - name: Get Service URL
+        id: service-url
+        run: |
+          URL=$(gcloud run services describe ${{ env.SERVICE_NAME }} \
+            --region=${{ env.GCP_REGION }} \
+            --format='value(status.url)')
+          echo "url=$URL" >> $GITHUB_OUTPUT
+      
+      - name: Health check
+        run: |
+          sleep 10
+          curl -f ${{ steps.service-url.outputs.url }}/health || exit 1
+      
+      - name: Comment deployment info on PR
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const output = `#### 🚀 Deployment Complete
+            
+            **Service:** ${{ env.SERVICE_NAME }}
+            **Image:** ${{ env.IMAGE_NAME }}:${{ github.sha }}
+            **URL:** ${{ steps.service-url.outputs.url }}
+            
+            ✅ Health check passed
+            
+            *Deployed by: @${{ github.actor }}*`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: output
+            })
