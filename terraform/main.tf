@@ -55,15 +55,18 @@ resource "google_cloud_run_service" "api" {
         }
       }
 
-      # IMPORTANT: Keep at least 1 instance running for accurate SLO tracking
-      # Prevents cold starts from skewing availability metrics
-      container_concurrency = 80
+      # Rate limiting via concurrency control
+      # Max 10 concurrent requests per instance for DDoS protection
+      container_concurrency = 10
+      # Timeout to prevent long-running attacks
+      timeout_seconds = 60
     }
 
     metadata {
       annotations = {
-        "autoscaling.knative.dev/minScale" = "1"  # Always keep 1 instance warm
-        "autoscaling.knative.dev/maxScale" = "10"
+        "autoscaling.knative.dev/minScale" = "1"
+        "autoscaling.knative.dev/maxScale" = "2"  # Cap at 2 instances = max 20 concurrent requests
+        "run.googleapis.com/cpu-throttling"  = "false"  # Always allocate CPU (better for latency)
       }
     }
   }
@@ -180,7 +183,13 @@ resource "google_monitoring_notification_channel" "pubsub" {
   }
 }
 
-# Service account for Cloud Function
+# Service Account for Cloud Run API
+resource "google_service_account" "cloud_run_sa" {
+  account_id   = "cloud-run-api-sa"
+  display_name = "Cloud Run API Service Account"
+}
+
+# Service Account for Cloud Function
 resource "google_service_account" "function_sa" {
   account_id   = "alert-handler-sa"
   display_name = "Alert Handler Service Account"
@@ -218,10 +227,12 @@ resource "google_cloudfunctions2_function" "alert_handler" {
   }
 
   service_config {
-    max_instance_count    = 10
-    available_memory      = "256M"
-    timeout_seconds       = 60
-    service_account_email = google_service_account.function_sa.email
+    max_instance_count               = 10   # Limit scaling to prevent runaway costs from alert storms
+    min_instance_count               = 0    # Scale to zero when idle
+    available_memory                 = "256M"
+    timeout_seconds                  = 60
+    max_instance_request_concurrency = 1    # Process one alert at a time per instance
+    service_account_email            = google_service_account.function_sa.email
     
     environment_variables = {
       PROJECT_ID = var.project_id

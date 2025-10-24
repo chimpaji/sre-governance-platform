@@ -1,8 +1,23 @@
 from flask import Flask, jsonify, request
 import time
 import os
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+from flask_talisman import Talisman
 
 app = Flask(__name__)
+
+# Security: Force HTTPS and add security headers
+Talisman(app, force_https=False, content_security_policy=None)  # force_https=False for demo
+
+# Rate limiting: Prevent DDoS and abuse
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    default_limits=["1000 per day", "100 per hour"],
+    storage_uri="memory://",
+    strategy="fixed-window"
+)
 
 # Mock data
 MOCK_USERS = [
@@ -11,7 +26,8 @@ MOCK_USERS = [
     {"id": 3, "name": "Carol Williams", "email": "carol@example.com", "status": "inactive"},
 ]
 
-@app.route('/health', methods=['GET'])
+@app.route('/health')
+@limiter.exempt
 def health():
     """Health check endpoint for Cloud Run"""
     return jsonify({
@@ -21,7 +37,8 @@ def health():
     }), 200
 
 
-@app.route('/api/users', methods=['GET'])
+@app.route('/api/users')
+@limiter.limit("50 per minute")
 def get_users():
     """Get users endpoint with chaos engineering support"""
     
@@ -47,18 +64,25 @@ def get_users():
 
 
 @app.route('/', methods=['GET'])
+@limiter.limit("200 per hour")
 def root():
     """Root endpoint with API documentation"""
     return jsonify({
         "service": "SRE Governance Platform API",
         "version": "1.0.0",
+        "rate_limits": {
+            "default": "1000 requests/day, 100 requests/hour per IP",
+            "root": "200 requests/hour",
+            "api_users": "50 requests/minute"
+        },
         "endpoints": {
             "health": "/health",
             "users": "/api/users",
             "chaos_latency": "/api/users?chaos=latency",
             "chaos_error": "/api/users?chaos=error"
         },
-        "documentation": "https://github.com/yourusername/sre-governance-platform"
+        "security": "Rate limiting enabled, DDoS protection active",
+        "documentation": "https://github.com/chimpaji/sre-governance-platform"
     }), 200
 
 
