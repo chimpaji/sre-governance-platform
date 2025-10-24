@@ -55,17 +55,14 @@ resource "google_cloud_run_service" "api" {
         }
       }
 
-      # Rate limiting via concurrency control
-      # Max 10 concurrent requests per instance for DDoS protection
-      container_concurrency = 10
-      # Timeout to prevent long-running attacks
-      timeout_seconds = 60
+      # Allow higher concurrency for testing
+      container_concurrency = 80
     }
 
     metadata {
       annotations = {
         "autoscaling.knative.dev/minScale" = "1"
-        "autoscaling.knative.dev/maxScale" = "2"  # Cap at 2 instances = max 20 concurrent requests
+        "autoscaling.knative.dev/maxScale" = "10"  # Allow more instances for testing
         "run.googleapis.com/cpu-throttling"  = "false"  # Always allocate CPU (better for latency)
       }
     }
@@ -231,7 +228,7 @@ resource "google_cloudfunctions2_function" "alert_handler" {
     min_instance_count               = 0    # Scale to zero when idle
     available_memory                 = "256M"
     timeout_seconds                  = 60
-    max_instance_request_concurrency = 1    # Process one alert at a time per instance
+    max_instance_request_concurrency = 10   # Allow concurrent alert processing
     service_account_email            = google_service_account.function_sa.email
     
     environment_variables = {
