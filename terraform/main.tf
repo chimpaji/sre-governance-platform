@@ -14,6 +14,8 @@ terraform {
   }
 }
 
+# CI/CD Pipeline: GitHub Actions automatically deploys changes on push to main
+
 provider "google" {
   project = var.project_id
   region  = var.region

@@ -1,0 +1,2 @@
+- ask me everytime if you want to create an md file
+- write code at minimal, DRY
