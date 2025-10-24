@@ -1,0 +1,50 @@
+### SRE Governance API - REST Client Tests
+### Service URL
+@baseUrl = https://sre-governance-api-557303580741.us-central1.run.app
+
+### ============================================
+### 1. Root Endpoint - API Documentation
+### ============================================
+GET {{baseUrl}}/
+Content-Type: application/json
+
+### ============================================
+### 2. Health Check
+### ============================================
+GET {{baseUrl}}/health
+Content-Type: application/json
+
+### ============================================
+### 3. Get Users - Normal Response
+### ============================================
+GET {{baseUrl}}/api/users
+Content-Type: application/json
+
+### ============================================
+### 4. Chaos Test - Latency (3 second delay)
+### ============================================
+GET {{baseUrl}}/api/users?chaos=latency
+Content-Type: application/json
+
+### ============================================
+### 5. Chaos Test - Error (500 Internal Server Error)
+### ============================================
+GET {{baseUrl}}/api/users?chaos=error
+Content-Type: application/json
+
+### ============================================
+### Testing Notes:
+### ============================================
+# Click "Send Request" above any request to test
+# 
+# Expected Responses:
+# - Root: API documentation with endpoints list
+# - Health: {"status": "healthy", ...}
+# - Users: {"users": [...], "count": 3, ...}
+# - Chaos Latency: 3 second delay, then normal response
+# - Chaos Error: {"error": "Internal Server Error", ...}
+#
+# For monitoring/alerts testing:
+# - Run chaos=latency multiple times to trigger alert policy
+# - Check Cloud Monitoring for latency spike
+# - Check Cloud Logging for alert handler logs
