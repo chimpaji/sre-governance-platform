@@ -46,6 +46,10 @@ gcloud projects add-iam-policy-binding uber-clone-api-325213 \
 gcloud projects add-iam-policy-binding uber-clone-api-325213 \
   --member="serviceAccount:github-actions-terraform@uber-clone-api-325213.iam.gserviceaccount.com" \
   --role="roles/cloudfunctions.admin"
+
+gcloud projects add-iam-policy-binding uber-clone-api-325213 \
+  --member="serviceAccount:github-actions-terraform@uber-clone-api-325213.iam.gserviceaccount.com" \
+  --role="roles/artifactregistry.writer"
 ```
 
 ## Step 3: Create Workload Identity Pool

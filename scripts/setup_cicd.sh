@@ -43,7 +43,7 @@ fi
 
 echo ""
 echo -e "${YELLOW}Step 3: Granting IAM permissions...${NC}"
-for ROLE in "roles/run.admin" "roles/iam.serviceAccountUser" "roles/storage.admin" "roles/monitoring.admin" "roles/pubsub.admin" "roles/cloudfunctions.admin"; do
+for ROLE in "roles/run.admin" "roles/iam.serviceAccountUser" "roles/storage.admin" "roles/monitoring.admin" "roles/pubsub.admin" "roles/cloudfunctions.admin" "roles/artifactregistry.writer"; do
   gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member="serviceAccount:${SERVICE_ACCOUNT_NAME}@${PROJECT_ID}.iam.gserviceaccount.com" \
     --role="$ROLE" \
