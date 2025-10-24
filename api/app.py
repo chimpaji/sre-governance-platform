@@ -14,7 +14,7 @@ Talisman(app, force_https=False, content_security_policy=None)  # force_https=Fa
 limiter = Limiter(
     app=app,
     key_func=get_remote_address,
-    default_limits=["1000 per day", "100 per hour"],
+    default_limits=["5000 per day", "1000 per hour"],
     storage_uri="memory://",
     strategy="fixed-window"
 )
@@ -71,7 +71,7 @@ def root():
         "service": "SRE Governance Platform API",
         "version": "1.0.0",
         "rate_limits": {
-            "default": "1000 requests/day, 100 requests/hour per IP",
+            "default": "5000 requests/day, 1000 requests/hour per IP",
             "root": "200 requests/hour",
             "api_users": "50 requests/minute"
         },
